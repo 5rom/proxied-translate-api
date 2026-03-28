@@ -13,7 +13,7 @@ tags:
 
 A lightweight, self-hosted Google Translate API with **optional proxy support**, rate limiting, and batch translation. Zero dependencies beyond Node.js — no database, no Redis, no external services required.
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/ZweBXA)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/HuIBhe?referralCode=tg4Y7G&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## Why?
 
