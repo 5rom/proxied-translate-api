@@ -1,0 +1,28 @@
+{
+  "name": "proxied-translate-api",
+  "version": "1.0.0",
+  "description": "A self-hosted Google Translate API with optional proxy support. Deploy as a Railway template or anywhere Node.js runs.",
+  "main": "server.mjs",
+  "type": "module",
+  "author": "5Romf",
+  "license": "MIT",
+  "keywords": [
+    "translate",
+    "google-translate",
+    "api",
+    "proxy",
+    "railway-template",
+    "self-hosted"
+  ],
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "google-translate-api-x": "^10.7.0",
+    "https-proxy-agent": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
