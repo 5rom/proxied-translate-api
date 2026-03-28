@@ -1,6 +1,7 @@
+import 'dotenv/config';
 import { createServer } from 'http';
 import { translate } from 'google-translate-api-x';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import { ProxyAgent } from 'undici';
 
 // --- Configuration from environment variables ---
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -30,12 +31,14 @@ function log(level, ...args) {
 }
 
 // --- Proxy agent (created once, reused) ---
+// Native fetch (Node 18+) requires undici ProxyAgent as dispatcher,
+// not the legacy http.Agent used by https-proxy-agent.
 function buildProxyAgent() {
   if (!PROXY_URL) return null;
   const auth = PROXY_USERNAME ? `${PROXY_USERNAME}:${PROXY_PASSWORD}@` : '';
   const url = `http://${auth}${PROXY_URL}:${PROXY_PORT || 443}`;
   log('info', `Proxy enabled → ${PROXY_URL}:${PROXY_PORT || 443}`);
-  return new HttpsProxyAgent(url);
+  return new ProxyAgent(url);
 }
 
 const proxyAgent = buildProxyAgent();
@@ -119,11 +122,11 @@ function summarizeText(text) {
 // --- Translate logic ---
 async function translateText(text, targetLang) {
   const opts = { to: targetLang, rejectOnPartialFail: false, forceBatch: false };
-
   if (proxyEnabled) {
     try {
       log('debug', 'Attempting translation via proxy');
-      const result = await translate(text, { ...opts, requestOptions: { agent: proxyAgent } });
+      const proxyFetch = (url, init) => fetch(url, { ...init, dispatcher: proxyAgent });
+      const result = await translate(text, { ...opts, requestFunction: proxyFetch });
       log('debug', 'Proxy translation succeeded');
       return result;
     } catch (err) {
