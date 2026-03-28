@@ -31,6 +31,7 @@ Click the **Deploy on Railway** button above. Configure environment variables in
 git clone https://github.com/YOUR_USERNAME/proxied-translate-api.git
 cd proxied-translate-api
 npm install
+cp .env.example .env
 npm start
 ```
 
