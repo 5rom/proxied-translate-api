@@ -1,6 +1,6 @@
 {
   "name": "proxied-translate-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A self-hosted Google Translate API with optional proxy support. Deploy as a Railway template or anywhere Node.js runs.",
   "main": "server.mjs",
   "type": "module",

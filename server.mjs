@@ -17,6 +17,7 @@ const PROXY_URL = process.env.PROXY_URL || '';
 const PROXY_PORT = process.env.PROXY_PORT || '';
 const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
+const PROXY_RETRIES = Math.max(0, parseInt(process.env.PROXY_RETRIES, 10) || 1);
 const PROXY_FALLBACK = process.env.PROXY_FALLBACK !== 'false'; // fallback to direct if proxy fails
 
 // --- Logging ---
@@ -119,20 +120,42 @@ function summarizeText(text) {
   return String(text);
 }
 
+function extractTranslatedText(result) {
+  if (Array.isArray(result)) {
+    return result.map((item, index) => {
+      if (item && typeof item.text === 'string') return item.text;
+      log('warn', `Translation returned an empty item at batch index ${index}`);
+      return null;
+    });
+  }
+
+  if (result && typeof result.text === 'string') {
+    return result.text;
+  }
+
+  throw new Error('Translation service returned an invalid response');
+}
+
 // --- Translate logic ---
 async function translateText(text, targetLang) {
   const opts = { to: targetLang, rejectOnPartialFail: false, forceBatch: false };
   if (proxyEnabled) {
-    try {
-      log('debug', 'Attempting translation via proxy');
-      const proxyFetch = (url, init) => fetch(url, { ...init, dispatcher: proxyAgent });
-      const result = await translate(text, { ...opts, requestFunction: proxyFetch });
-      log('debug', 'Proxy translation succeeded');
-      return result;
-    } catch (err) {
-      log('warn', `Proxy translation failed: ${err.message}`);
-      if (!PROXY_FALLBACK) throw err;
-      log('info', 'Falling back to direct connection');
+    const proxyFetch = (url, init) => fetch(url, { ...init, dispatcher: proxyAgent });
+    const totalProxyAttempts = PROXY_RETRIES + 1;
+
+    for (let attempt = 1; attempt <= totalProxyAttempts; attempt++) {
+      try {
+        log('debug', `Attempting translation via proxy (${attempt}/${totalProxyAttempts})`);
+        const result = await translate(text, { ...opts, requestFunction: proxyFetch });
+        log('debug', `Proxy translation succeeded on attempt ${attempt}`);
+        return result;
+      } catch (err) {
+        log('warn', `Proxy translation failed on attempt ${attempt}/${totalProxyAttempts}: ${err.message}`);
+        if (attempt === totalProxyAttempts) {
+          if (!PROXY_FALLBACK) throw err;
+          log('info', 'Falling back to direct connection');
+        }
+      }
     }
   }
 
@@ -159,6 +182,10 @@ function validateTranslateInput(body) {
   if (Array.isArray(text)) {
     if (text.length === 0) {
       return { error: '"text" array must not be empty', status: 400 };
+    }
+    const hasInvalidItem = text.some((t) => typeof t !== 'string');
+    if (hasInvalidItem) {
+      return { error: '"text" array must contain only strings', status: 400 };
     }
     if (text.length > MAX_BATCH_SIZE) {
       return { error: `Batch size exceeds limit of ${MAX_BATCH_SIZE}`, status: 400 };
@@ -258,10 +285,7 @@ async function handleRequest(req, res) {
       log('info', `Translate [${ip}]: ${summarizeText(text)} → ${to}`);
 
       const result = await translateText(text, to);
-
-      const translatedText = Array.isArray(result)
-        ? result.map((r) => r.text)
-        : result?.text;
+      const translatedText = extractTranslatedText(result);
 
       json(res, 200, { translatedText });
     } catch (err) {

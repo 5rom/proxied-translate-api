@@ -138,6 +138,7 @@ The proxy is **disabled by default**. Leave `PROXY_URL` empty to use direct conn
 | `PROXY_PORT`     | _(empty)_ | Proxy port (e.g. `123456`)                     |
 | `PROXY_USERNAME` | _(empty)_ | Proxy authentication username                 |
 | `PROXY_PASSWORD` | _(empty)_ | Proxy authentication password                 |
+| `PROXY_RETRIES`  | `1`        | Number of extra proxy retries before fallback |
 | `PROXY_FALLBACK` | `true`    | Fall back to direct if proxy fails            |
 
 **How proxy logic works:**
@@ -146,6 +147,7 @@ The proxy is **disabled by default**. Leave `PROXY_URL` empty to use direct conn
 PROXY_URL is empty?
   → YES: Always use direct connection (no proxy overhead)
   → NO:  Try proxy first
+           → Fail: Retry proxy up to PROXY_RETRIES additional times
            → Success: Return result
            → Fail + PROXY_FALLBACK=true: Retry via direct connection
            → Fail + PROXY_FALLBACK=false: Return error
