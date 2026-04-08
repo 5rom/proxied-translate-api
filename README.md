@@ -125,6 +125,7 @@ All configuration is via **environment variables**. See [`.env.example`](.env.ex
 | `LOG_LEVEL`          | `info`   | Logging level: `debug`, `info`, `warn`, `error` |
 | `MAX_TEXT_LENGTH`    | `5000`   | Max characters per text                      |
 | `MAX_BATCH_SIZE`     | `50`     | Max items in a batch request                 |
+| `BATCH_RECOVERY_CHUNK_SIZE` | `50` | Chunk size used when recovering partial batch failures |
 | `RATE_LIMIT_MAX`     | `60`     | Max requests per IP per window (0 = off)     |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in milliseconds           |
 

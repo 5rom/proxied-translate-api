@@ -19,6 +19,7 @@ const PROXY_USERNAME = process.env.PROXY_USERNAME || '';
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '';
 const PROXY_RETRIES = Math.max(0, parseInt(process.env.PROXY_RETRIES, 10) || 1);
 const PROXY_FALLBACK = process.env.PROXY_FALLBACK !== 'false'; // fallback to direct if proxy fails
+const BATCH_RECOVERY_CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_RECOVERY_CHUNK_SIZE, 10) || 50);
 
 // --- Logging ---
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -120,11 +121,19 @@ function summarizeText(text) {
   return String(text);
 }
 
-function extractTranslatedText(result) {
+function chunkArray(items, chunkSize) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function extractTranslatedText(result, baseIndex = 0) {
   if (Array.isArray(result)) {
     return result.map((item, index) => {
       if (item && typeof item.text === 'string') return item.text;
-      log('warn', `Translation returned an empty item at batch index ${index}`);
+      log('warn', `Translation returned an empty item at batch index ${baseIndex + index}`);
       return null;
     });
   }
@@ -137,7 +146,7 @@ function extractTranslatedText(result) {
 }
 
 // --- Translate logic ---
-async function translateText(text, targetLang) {
+async function runTranslate(text, targetLang) {
   const opts = { to: targetLang, rejectOnPartialFail: false, forceBatch: false };
   if (proxyEnabled) {
     const proxyFetch = (url, init) => fetch(url, { ...init, dispatcher: proxyAgent });
@@ -162,6 +171,51 @@ async function translateText(text, targetLang) {
   const result = await translate(text, opts);
   log('debug', 'Direct translation succeeded');
   return result;
+}
+
+async function recoverMissingBatchItems(originalTexts, translatedTexts, targetLang) {
+  const recovered = [...translatedTexts];
+
+  for (let index = 0; index < recovered.length; index++) {
+    if (recovered[index] !== null) continue;
+
+    try {
+      log('info', `Retrying translation for batch index ${index}`);
+      const retried = await runTranslate(originalTexts[index], targetLang);
+      recovered[index] = extractTranslatedText(retried);
+    } catch (err) {
+      log('warn', `Retry failed for batch index ${index}: ${err.message}`);
+    }
+  }
+
+  return recovered;
+}
+
+async function translateText(text, targetLang) {
+  if (!Array.isArray(text)) {
+    const result = await runTranslate(text, targetLang);
+    return extractTranslatedText(result);
+  }
+
+  const chunkSize = Math.min(MAX_BATCH_SIZE, BATCH_RECOVERY_CHUNK_SIZE);
+  const chunks = chunkArray(text, chunkSize);
+  const translatedChunks = [];
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    const baseIndex = chunkIndex * chunkSize;
+    const result = await runTranslate(chunk, targetLang);
+    const translatedChunk = extractTranslatedText(result, baseIndex);
+
+    if (translatedChunk.some((item) => item === null)) {
+      log('info', `Recovering partial batch failures for items ${baseIndex}-${baseIndex + chunk.length - 1}`);
+      translatedChunks.push(await recoverMissingBatchItems(chunk, translatedChunk, targetLang));
+    } else {
+      translatedChunks.push(translatedChunk);
+    }
+  }
+
+  return translatedChunks.flat();
 }
 
 // --- Validation ---
@@ -284,8 +338,7 @@ async function handleRequest(req, res) {
       const { text, to } = input;
       log('info', `Translate [${ip}]: ${summarizeText(text)} → ${to}`);
 
-      const result = await translateText(text, to);
-      const translatedText = extractTranslatedText(result);
+      const translatedText = await translateText(text, to);
 
       json(res, 200, { translatedText });
     } catch (err) {
